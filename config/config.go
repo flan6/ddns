@@ -27,12 +27,12 @@ func loadConfig(path string) error {
 		return err
 	}
 
-	tempConfig := &Config{}
-	if err := json.Unmarshal(file, tempConfig); err != nil {
+	tempConfig := Config{}
+	if err := json.Unmarshal(file, &tempConfig); err != nil {
 		return err
 	}
 
-	config = tempConfig
+	config = &tempConfig
 	return nil
 }
 
