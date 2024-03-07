@@ -12,6 +12,7 @@ import (
 
 	"github.com/flan6/ddns/config"
 	"github.com/flan6/ddns/godaddy"
+	"github.com/flan6/ddns/godaddy/entity"
 )
 
 func main() {
@@ -49,22 +50,31 @@ func main() {
 		}
 		resp.Body.Close()
 
-		records, err := dns.RecordsByType("qual.work", "A", "@")
+		records, err := dns.Records("qual.work")
 		if err != nil {
 			logger.Error("Failed to get records", err)
 			return
 		}
 
 		for i := range records {
-			records[i].Data = string(ip)
+			switch records[i].Type {
+			case "A":
+				logger.Info("changing record to new ip", "record", records[i], "ip", string(ip))
+				records[i].Data = string(ip)
+
+				if err := dns.SetRecordsByType(
+					"qual.work",
+					"A",
+					records[i].Name,
+					[]entity.Record{records[i]},
+				); err != nil {
+					logger.Error("Failed to set records", err)
+					return
+				}
+			}
 		}
 
-		if err := dns.SetRecordsByType("qual.work", "A", "@", records); err != nil {
-			logger.Error("Failed to set records", err)
-			return
-		}
-
-		logger.Info("Updated records", "ip", string(ip), "records", records)
+		logger.Info("Successfuly updated records")
 		time.Sleep(time.Minute * time.Duration(config.GetConfig().UpdateInterval))
 	}
 }
