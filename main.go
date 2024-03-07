@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -14,41 +15,43 @@ import (
 )
 
 func main() {
+	const configPath = "config/config.json"
+
 	if err := LoadEnv(".env"); err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	go config.WatchConfig("config/config.json")
+	go config.WatchConfig(configPath)
 
-	conf := config.GetConfig()
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	dns := godaddy.NewGoDaddy(os.Getenv("api_key"), os.Getenv("api_secret"))
 
 	domains, err := dns.Domains()
 	if err != nil {
-		fmt.Println(err)
+		logger.Error("Failed to get domains", err)
 		return
 	}
 
-	fmt.Println(domains)
-
-	resp, err := http.Get("https://api.ipify.org")
-	if err != nil {
-		fmt.Println("Error getting IP:", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	ip, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("Error reading IP:", err)
-		return
-	}
-
+	logger.Info("Domains:", "domains", domains)
+	logger.Info("Starting to update records....")
 	for {
+		resp, err := http.Get("https://api.ipify.org")
+		if err != nil {
+			logger.Error("Failed to get IP:", err)
+			return
+		}
+
+		ip, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logger.Error("Failed to read IP:", err)
+			return
+		}
+		resp.Body.Close()
+
 		records, err := dns.RecordsByType("qual.work", "A", "@")
 		if err != nil {
-			fmt.Println(err)
+			logger.Error("Failed to get records", err)
 			return
 		}
 
@@ -57,11 +60,12 @@ func main() {
 		}
 
 		if err := dns.SetRecordsByType("qual.work", "A", "@", records); err != nil {
-			fmt.Println(err)
+			logger.Error("Failed to set records", err)
 			return
 		}
 
-		time.Sleep(time.Minute * time.Duration(conf.UpdateInterval))
+		logger.Info("Updated records", "ip", string(ip), "records", records)
+		time.Sleep(time.Minute * time.Duration(config.GetConfig().UpdateInterval))
 	}
 }
 
